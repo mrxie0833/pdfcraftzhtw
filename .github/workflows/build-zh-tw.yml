@@ -83,7 +83,8 @@ jobs:
       # 9. 自動建立 GitHub Release 並附加安裝包
       - name: Create / Update GitHub Release
         uses: softprops/action-gh-release@v2
-        if: startsWith(github.ref, 'refs/tags/')
+        # 當為標籤觸發，或者是手動觸發時都執行
+        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
         with:
           files: ${{ matrix.artifact_name }}
           name: "PdfCraft Release (${{ github.ref_name }}) - 繁體中文版"
