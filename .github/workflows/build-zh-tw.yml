@@ -1,0 +1,96 @@
+name: Build PdfCraft (Traditional Chinese)
+
+on:
+  push:
+    tags:
+      - 'v*' # 當 Push 標籤如 v0.2.1 時觸發
+  workflow_dispatch: # 支援在 GitHub 介面上手動觸發
+
+jobs:
+  build-and-release:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            artifact_name: pdfcraft-zh-TW-linux-x64.tar.gz
+            asset_name: pdfcraft-zh-TW-linux-x64.tar.gz
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact_name: pdfcraft-zh-TW-windows-x64.zip
+            asset_name: pdfcraft-zh-TW-windows-x64.zip
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            artifact_name: pdfcraft-zh-TW-macos-x64.tar.gz
+            asset_name: pdfcraft-zh-TW-macos-x64.tar.gz
+
+    steps:
+      # 1. 檢出程式碼
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      # 2. 安裝 Rust 工具鏈
+      - name: Setup Rust Toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      # 3. 快取 Rust 依賴套件（加速建構）
+      - name: Cache Cargo Dependencies
+        uses: Swatinem/rust-cache@v2
+
+      # 4. 安裝 Linux 系統建構依賴（僅 Linux 需要）
+      - name: Install Linux Dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libssl-dev libgtk-3-dev libxcb-shape0-dev libxcb-xfixes0-dev
+
+      # 5. 編譯成繁體中文發布檔
+      # 透過注入環境變數或指定 feature 設定預設語系
+      - name: Build Release Binary
+        env:
+          DEFAULT_LOCALE: zh-TW
+          APP_LANG: zh-TW
+          RUST_BACKTRACE: 1
+        run: |
+          cargo build --release --target ${{ matrix.target }} -p pdfcraft
+
+      # 6. 打包產出檔案 (Linux / macOS)
+      - name: Package Binary (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          cd target/${{ matrix.target }}/release/
+          tar -czvf ../../../${{ matrix.artifact_name }} pdfcraft
+
+      # 7. 打包產出檔案 (Windows)
+      - name: Package Binary (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Compress-Archive -Path target/${{ matrix.target }}/release/pdfcraft.exe -DestinationPath ${{ matrix.artifact_name }}
+
+      # 8. 上傳單一 Job 的 Artifact（方便在 Actions 頁面直接下載測試）
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: ${{ matrix.artifact_name }}
+
+      # 9. 自動建立 GitHub Release 並附加安裝包
+      - name: Create / Update GitHub Release
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: ${{ matrix.artifact_name }}
+          name: "PdfCraft Release (${{ github.ref_name }}) - 繁體中文版"
+          body: |
+            ## PdfCraft 繁體中文版 (Traditional Chinese)
+            此發布版本已預設配置繁體中文（zh-TW）介面。
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
